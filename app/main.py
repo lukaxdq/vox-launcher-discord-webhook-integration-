@@ -4,9 +4,12 @@ from functools import partial
 from pathlib import Path
 import traceback, requests
 import subprocess
+import sys
 
 from customtkinter import CTk, CTkLabel
 from tkinter import StringVar
+
+from discord_handler import DiscordWebhookHandler
 
 from constants import *
 from helpers import *
@@ -57,16 +60,36 @@ class CustomFormatter(logging.Formatter):
 config_path = resource_path("logging_config.yaml")
 
 with config_path.open('rt') as f:
-    config = DotDict(yaml.safe_load(f.read()))
+    config_dict = yaml.safe_load(f.read())
 
-    logfile = resource_path(config.handlers.file.filename)
-    config.handlers.file.filename = logfile
+    # Convert file paths
+    logfile = resource_path(config_dict["handlers"]["file"]["filename"])
+    config_dict["handlers"]["file"]["filename"] = str(logfile)
 
-    config.formatters.console["()"] = CustomFormatter
+    # Set up custom formatter
+    config_dict["formatters"]["console"]["()"] = "main.CustomFormatter"
+
+    # Set up Discord webhook if configured
+    settings_manager = SettingsManager(enum_cls=Settings, app=None)
+    settings_manager.load()
+    webhook_url = settings_manager.get_setting(Settings.DISCORD_WEBHOOK)
+    game_logs_only = settings_manager.get_setting(Settings.DISCORD_GAME_LOGS_ONLY)
+    
+    # Log the webhook status
+    if webhook_url:
+        logger.info(f"Discord webhook configured. Logs will be sent to Discord. Game logs only: {game_logs_only}")
+        config_dict["handlers"]["discord"]["webhook_url"] = webhook_url
+        config_dict["handlers"]["discord"]["game_logs_only"] = game_logs_only
+    else:
+        logger.debug("No Discord webhook configured. Discord logging is disabled.")
+        # Remove Discord handler if no webhook URL is configured
+        for logger_name in ["development", "production"]:
+            if "discord" in config_dict["loggers"][logger_name]["handlers"]:
+                config_dict["loggers"][logger_name]["handlers"].remove("discord")
 
     logfile.parent.mkdir(exist_ok=True, parents=True)
 
-    logging.config.dictConfig(config.to_dict())
+    logging.config.dictConfig(config_dict)
 
 
 # ------------------------------------------------------------------------------------ #

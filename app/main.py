@@ -1,32 +1,14 @@
+import sys
+import os
 import logging, logging.config
 import yaml
 from functools import partial
 from pathlib import Path
 import traceback, requests
 import subprocess
-import sys
 
-from customtkinter import CTk, CTkLabel
-from tkinter import StringVar
-
-from discord_handler import DiscordWebhookHandler
-
-from constants import *
-from helpers import *
-from strings import STRINGS
-from fonts import FONT
-from settings_manager import SettingsManager, Settings
-
-from widgets.buttons import CustomButton, ImageButton
-from widgets.entries import TokenEntry, DirectoryEntry, ClusterDirectoryEntry
-from widgets.frames import ScrollableShardGroupFrame
-from widgets.misc import Tooltip, CommandPopUp, ServerErrorPopUp, AppExceptionPopUp, AppOutdatedPopUp, LaunchDataPopUp, ClusterStats, RestartRequiredPopUp
-from widgets.settings_screen import SettingsScreen
-
-# ------------------------------------------------------------------------------------ #
-
+# Define CustomFormatter before any logging configuration
 COLOR_FMT = "\u001b[1m\u001b[38;5;%dm"
-
 COLOR_TERM = os.getenv("COLORTERM")
 TERMINAL_SUPPORT_COLORS = COLOR_TERM is not None and COLOR_TERM.lower() in ('truecolor', '256color')
 
@@ -54,42 +36,65 @@ class CustomFormatter(logging.Formatter):
 
     def format(self, record):
         formatter = self.FORMATTERS.get(record.levelno)
-
         return formatter.format(record)
 
-config_path = resource_path("logging_config.yaml")
+from customtkinter import CTk, CTkLabel
+from tkinter import StringVar
 
-with config_path.open('rt') as f:
-    config_dict = yaml.safe_load(f.read())
+from discord_handler import DiscordWebhookHandler
 
-    # Convert file paths
-    logfile = resource_path(config_dict["handlers"]["file"]["filename"])
-    config_dict["handlers"]["file"]["filename"] = str(logfile)
+from constants import *
+from helpers import *
+from strings import STRINGS
+from fonts import FONT
+from settings_manager import SettingsManager, Settings
 
-    # Set up custom formatter
-    config_dict["formatters"]["console"]["()"] = "main.CustomFormatter"
+from widgets.buttons import CustomButton, ImageButton
+from widgets.entries import TokenEntry, DirectoryEntry, ClusterDirectoryEntry
+from widgets.frames import ScrollableShardGroupFrame
+from widgets.misc import Tooltip, CommandPopUp, ServerErrorPopUp, AppExceptionPopUp, AppOutdatedPopUp, LaunchDataPopUp, ClusterStats, RestartRequiredPopUp
+from widgets.settings_screen import SettingsScreen
 
-    # Set up Discord webhook if configured
-    settings_manager = SettingsManager(enum_cls=Settings, app=None)
-    settings_manager.load()
-    webhook_url = settings_manager.get_setting(Settings.DISCORD_WEBHOOK)
-    game_logs_only = settings_manager.get_setting(Settings.DISCORD_GAME_LOGS_ONLY)
+# ------------------------------------------------------------------------------------ #
+
+# Set up logging configuration
+def setup_logging():
+    config_path = resource_path("logging_config.yaml")
     
-    # Log the webhook status
-    if webhook_url:
-        logger.info(f"Discord webhook configured. Logs will be sent to Discord. Game logs only: {game_logs_only}")
-        config_dict["handlers"]["discord"]["webhook_url"] = webhook_url
-        config_dict["handlers"]["discord"]["game_logs_only"] = game_logs_only
-    else:
-        logger.debug("No Discord webhook configured. Discord logging is disabled.")
+    with config_path.open('rt') as f:
+        config_dict = yaml.safe_load(f.read())
+
+        # Convert file paths
+        logfile = resource_path(config_dict["handlers"]["file"]["filename"])
+        config_dict["handlers"]["file"]["filename"] = str(logfile)
+
+        # Set up custom formatter using the class object directly
+        config_dict["formatters"]["console"]["()"] = CustomFormatter
+
+        # Set up Discord webhook if configured
+        settings_manager = SettingsManager(enum_cls=Settings, app=None)
+        settings_manager.load()
+        webhook_url = settings_manager.get_setting(Settings.DISCORD_WEBHOOK)
+        game_logs_only = settings_manager.get_setting(Settings.DISCORD_GAME_LOGS_ONLY)
+        
         # Remove Discord handler if no webhook URL is configured
-        for logger_name in ["development", "production"]:
-            if "discord" in config_dict["loggers"][logger_name]["handlers"]:
-                config_dict["loggers"][logger_name]["handlers"].remove("discord")
+        if not webhook_url:
+            for logger_name in ["development", "production"]:
+                if "discord" in config_dict["loggers"][logger_name]["handlers"]:
+                    config_dict["loggers"][logger_name]["handlers"].remove("discord")
+        else:
+            config_dict["handlers"]["discord"]["webhook_url"] = webhook_url
+            config_dict["handlers"]["discord"]["game_logs_only"] = game_logs_only
 
-    logfile.parent.mkdir(exist_ok=True, parents=True)
+        logfile.parent.mkdir(exist_ok=True, parents=True)
 
-    logging.config.dictConfig(config_dict)
+        # Apply the configuration
+        logging.config.dictConfig(config_dict)
+
+setup_logging()
+
+# Now we can set up the logger
+logger = logging.getLogger(LOGGER)
 
 
 # ------------------------------------------------------------------------------------ #
